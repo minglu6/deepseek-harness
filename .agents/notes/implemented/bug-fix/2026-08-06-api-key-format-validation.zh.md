@@ -34,7 +34,7 @@ Status: implemented
 
 **未点名凭据。** 省略 `apiKeyEnv` 的 pi-ai profile 可以在 harness 持有的凭据路径之外鉴权。[provider.ts](../../../../packages/llm/llm-pi-ai/src/provider.ts) 中的 `routeAuth` 保留内置 catalog 提供方自身的鉴权，正是为了让提供方原生的 ambient 发现继续工作；而该 catalog 附带的 `openai-codex` 通过 OAuth 鉴权。`namesCredential` 承载这一区分；省略不是需要校验的值。
 
-**Web UI 中留空的输入框。** 即便某个提供方的 Key 已经存好，该输入框也是空着打开的——`keyStored` 的文案写的是「已配置——输入新值以替换」——所以留空意味着*保持已存储的值*。`ProviderEditor` 在草稿为空时完全跳过 `credentials.set`，这一点保持不变：留空绝不拦截提交，否则改一个 base URL 都得重新输一遍 Key。
+**Web UI 中留空的输入框。** 即便某个提供方的 Key 已经存好，该输入框也是空着打开的——`keyStored` 的文案写的是「已配置(输入新值可替换)」——所以留空意味着*保持已存储的值*。`ProviderEditor` 在草稿为空时完全跳过 `credentials.set`，这一点保持不变：留空绝不拦截提交，否则改一个 base URL 都得重新输一遍 Key。
 
 **解析得到的值只含空白。** 两个适配器都将其视为非法，因为它无法为请求鉴权。在浏览器中，这同样是字段级失败：字段是人刚刚敲过字的地方，静默丢弃他敲进去的内容永远不是正确答案。
 
