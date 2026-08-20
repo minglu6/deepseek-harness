@@ -47,6 +47,26 @@ const PiAiConfig = Schema.object({
   })),
 })
 
+const QoderConfig = Schema.object({
+  apiKeyEnv: Schema.string().role('credential-ref').default('QODERCN_PERSONAL_ACCESS_TOKEN'),
+  vpcInstance: Schema.string(),
+  defaultContextWindow: Schema.number().step(1).min(1),
+  models: Schema.array(Schema.object({
+    id: Schema.string().required(),
+    name: Schema.string(),
+    contextWindow: Schema.number().step(1).min(1),
+  })).default([{ id: 'auto', name: 'Auto', contextWindow: 180_000 }]),
+  providers: Schema.dict(Schema.object({
+    apiKeyEnv: Schema.string().role('credential-ref'),
+    vpcInstance: Schema.string(),
+    models: Schema.array(Schema.object({
+      id: Schema.string().required(),
+      name: Schema.string(),
+      contextWindow: Schema.number().step(1).min(1),
+    })),
+  })),
+})
+
 const DeepSeekConfig = Schema.object({
   apiKeyEnv: Schema.string().role('credential-ref'),
   baseURL: Schema.string().pattern(/^https:\/\//),
@@ -421,6 +441,54 @@ describe('ModelsSection', () => {
       await Promise.resolve()
     })
     expect(onClose).toHaveBeenCalledWith(true)
+  })
+
+  it('edits qoder-cn with a PAT, optional VPC, and the model catalog, without a gateway URL', async () => {
+    const namespace: SettingsNamespaceView = {
+      ns: 'llm-qoder',
+      schema: JSON.parse(JSON.stringify(QoderConfig.toJSON())) as unknown,
+      value: {
+        apiKeyEnv: 'QODERCN_PERSONAL_ACCESS_TOKEN',
+        models: [{ id: 'auto', name: 'Auto', contextWindow: 180_000 }],
+      },
+      base: { models: [{ id: 'auto', name: 'Auto', contextWindow: 180_000 }] },
+      user: {},
+      applies: 'live',
+      secrets: [],
+      revision: 0,
+    }
+    const mutate = vi.fn(() => Promise.resolve(ok({ ...namespace, revision: 1 })))
+    const set = vi.fn(() => Promise.resolve(ok({})))
+    const { face } = scriptedFace({ mutate, set })
+    const { ProviderEditor } = await import('../src/client/ProviderEditor.tsx')
+    render(<ProviderEditor
+      provider="qoder-cn"
+      displayName="qoder-cn"
+      namespace={namespace}
+      schema={settingsSchema}
+      settingsPath={['providers', 'qoder-cn']}
+      api={face as never}
+      t={t}
+      readOnly={false}
+      onClose={vi.fn()}
+    />)
+    expect(screen.getByLabelText(en.keyInput)).toBeTruthy()
+    expect(screen.queryByLabelText(en.baseUrl)).toBeNull()
+    fireEvent.click(screen.getByText(en.customized))
+    expect(screen.getByLabelText(en.vpcInstance)).toBeTruthy()
+    expect(screen.getByText(en.vpcInstanceHint)).toBeTruthy()
+    fireEvent.change(screen.getByLabelText(en.vpcInstance), { target: { value: 'acme.vpc.qoder.com.cn' } })
+    fireEvent.change(screen.getByLabelText(en.keyInput), { target: { value: 'pt-test' } })
+    fireEvent.click(screen.getByText(en.apply))
+    await waitFor(() => {
+      expect(set).toHaveBeenCalledWith({ ref: 'QODERCN_PERSONAL_ACCESS_TOKEN', value: 'pt-test' })
+    })
+    expect(mutate).toHaveBeenCalledWith(expect.objectContaining({
+      ns: 'llm-qoder',
+      ops: expect.arrayContaining([
+        { op: 'set', path: ['providers', 'qoder-cn', 'vpcInstance'], value: 'acme.vpc.qoder.com.cn' },
+      ]),
+    }))
   })
 
   it('applies customized deepseek fields as path ops', async () => {
@@ -995,12 +1063,42 @@ describe('ModelsSection', () => {
     fireEvent.change(pick, { target: { value: 'broken' } })
     await screen.findByText(/unresolvable settings path/)
     fireEvent.change(pick, { target: { value: 'plain' } })
+    const key = await screen.findByLabelText<HTMLInputElement>(en.keyInput)
     await waitFor(() => {
       expect(screen.getAllByText(content => content.includes(en.advancedHint)).length).toBeGreaterThan(0)
     })
-    // The hint-only card cannot apply anything, and offers no key field.
     expect(screen.getByText<HTMLButtonElement>(en.apply).disabled).toBe(true)
-    expect(screen.queryAllByLabelText(en.keyInput)).toHaveLength(0)
+    fireEvent.change(key, { target: { value: 'pt-plain' } })
+    expect(screen.getByText<HTMLButtonElement>(en.apply).disabled).toBe(false)
+  })
+
+  it('lists addable providers in provider-id order', async () => {
+    await mountSection()
+    fireEvent.click(screen.getByText(en.add))
+    const pick = await screen.findByLabelText<HTMLSelectElement>(en.provider)
+    expect([...pick.options].map(option => option.value)).toEqual(['anthropic', 'broken', 'plain'])
+  })
+
+  it('stores an API key for an unknown adapter family and materializes its profile', async () => {
+    const after = {
+      ...wireNamespaces()[1]!,
+      user: { profiles: { plain: {} } },
+      value: { profiles: { plain: {} } },
+      revision: 1,
+    }
+    const mutate = vi.fn(() => Promise.resolve(ok(after)))
+    const set = vi.fn(() => Promise.resolve(ok({})))
+    await mountSection({ mutate, set })
+    fireEvent.click(screen.getByText(en.add))
+    const pick = await screen.findByLabelText<HTMLSelectElement>(en.provider)
+    fireEvent.change(pick, { target: { value: 'plain' } })
+    fireEvent.change(await screen.findByLabelText<HTMLInputElement>(en.keyInput), { target: { value: 'pt-plain' } })
+    fireEvent.click(screen.getByText(en.apply))
+    await waitFor(() => { expect(set).toHaveBeenCalledWith({ ref: 'PLAIN_API_KEY', value: 'pt-plain' }) })
+    expect(mutate).toHaveBeenCalledWith(expect.objectContaining({
+      ns: 'llm-plain',
+      ops: [{ op: 'set', path: ['profiles', 'plain'], value: {} }],
+    }))
   })
 
   it('surfaces a rejected settings write and never stores the key after it', async () => {
