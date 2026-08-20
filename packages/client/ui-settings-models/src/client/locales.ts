@@ -137,7 +137,7 @@ export const zh: { [Key in keyof typeof en]: string } = {
   keyInput: 'API 密钥',
   keyPlaceholder: '输入 API 密钥',
   keyPlaceholderNative: '输入 API 密钥，或留空使用环境认证',
-  keyStored: '已配置——输入新值可替换',
+  keyStored: '已配置(输入新值可替换)',
   keyEnvLocked: '由启动环境提供（只读）',
   customized: '自定义设置',
   baseUrl: 'API 地址',
