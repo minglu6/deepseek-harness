@@ -39,8 +39,8 @@ import type { SettingsSchemaOperations } from './schema-operations.ts'
 import type { en } from './locales.ts'
 import styles from './ModelsSection.module.css'
 
-/** Per-adapter-family curated field sets (unknown namespaces get the hint alone). */
-type EditorLayout = 'deepseek' | 'pi-ai' | 'unknown'
+/** Per-adapter-family curated field sets. Unknown namespaces still get the API key. */
+type EditorLayout = 'deepseek' | 'pi-ai' | 'qoder' | 'unknown'
 
 /** The public DeepSeek endpoint shown as the deepseek base-URL placeholder. */
 const DEEPSEEK_PUBLIC_BASE_URL = 'https://api.deepseek.com'
@@ -131,6 +131,7 @@ export function pathOps(
 
 /** The editor layout the owning namespace selects. */
 function layoutOf(ns: string): EditorLayout {
+  if (ns === 'llm-qoder') return 'qoder'
   if (ns === 'llm-deepseek') return 'deepseek'
   if (ns === 'llm-pi-ai') return 'pi-ai'
   return 'unknown'
@@ -147,7 +148,10 @@ function refFor(
   const named = typeof profile === 'object' && profile !== null
     ? (profile as { apiKeyEnv?: unknown }).apiKeyEnv
     : undefined
-  return typeof named === 'string' && named.length > 0 ? named : deriveKeyRef(provider)
+  if (typeof named === 'string' && named.length > 0) return named
+  // Adapter default, not deriveKeyRef('qoder-cn') (`QODER_CN_API_KEY`).
+  if (namespace.ns === 'llm-qoder' || provider === 'qoder-cn') return 'QODERCN_PERSONAL_ACCESS_TOKEN'
+  return deriveKeyRef(provider)
 }
 
 /**
@@ -246,9 +250,11 @@ export function ProviderEditor(props: ProviderEditorProps): ReactNode {
    */
   const applyOnce = async (): Promise<string | undefined> => {
     const ns = namespace.ns
-    // A pi-ai profile names the conventional reference only when this page is
-    // about to store a key. Otherwise the provider keeps its native auth path.
-    const next = layout === 'pi-ai' && stringAt(draft, 'apiKeyEnv') === undefined
+    // A profile names the conventional reference only when this page is about
+    // to store a key and the schema has `apiKeyEnv`. Otherwise a pi-ai route
+    // keeps its native auth path, and an unknown family stores only the key.
+    const canStoreApiKeyEnv = schema.nodeAtPath(root, [...settingsPath, 'apiKeyEnv']) !== undefined
+    const next = canStoreApiKeyEnv && stringAt(draft, 'apiKeyEnv') === undefined
       && stringAt(fallback, 'apiKeyEnv') === undefined && keyValue.length > 0
       ? schema.setPath(draft, ['apiKeyEnv'], keyRef)
       : draft
@@ -272,9 +278,14 @@ export function ProviderEditor(props: ProviderEditorProps): ReactNode {
       && fallback === undefined
       && committedOriginal === undefined
       && Object.keys(next).length === 0
+    const materializesUnknownProfile = layout === 'unknown'
+      && fallback === undefined
+      && committedOriginal === undefined
+      && Object.keys(next).length === 0
+      && keyValue.length > 0
     const ops: SettingsPathOpView[] = props.credentialOnly === true
       ? []
-      : materializesNativeProfile
+      : materializesNativeProfile || materializesUnknownProfile
         ? [{ op: 'set', path: [...settingsPath], value: {} }]
         : pathOps(settingsPath, committedOriginal, next)
     if (ops.length > 0) {
@@ -330,9 +341,9 @@ export function ProviderEditor(props: ProviderEditorProps): ReactNode {
   /**
    * The curated fields of one known adapter family. The family arrives
    * narrowed so the per-family branches below are total: an unknown namespace
-   * renders the hint instead and never reaches this body.
+   * renders the shared API key plus the yaml hint and never reaches this body.
    */
-  const curatedFields = (family: 'deepseek' | 'pi-ai'): ReactNode => {
+  const curatedFields = (family: 'deepseek' | 'pi-ai' | 'qoder'): ReactNode => {
     // What a hand-declared route names for itself and nothing else can supply.
     // A whole-section `llm-deepseek` profile is a composition fact with no
     // per-route identity for its schema to carry, hence the family test.
@@ -407,22 +418,42 @@ export function ProviderEditor(props: ProviderEditorProps): ReactNode {
                 </div>
               )
               : null}
-            <div className={styles['field']}>
-              <span className={styles['fieldLabel']}>{t('baseUrl')}</span>
-              <input
-                className={styles['input']}
-                type="text"
-                value={stringAt(draft, 'baseURL') ?? ''}
-                placeholder={family === 'deepseek'
-                  ? DEEPSEEK_PUBLIC_BASE_URL
-                  : stringAt(fallback, 'baseURL') ?? t('baseUrlDefault')}
-                aria-label={t('baseUrl')}
-                disabled={disabled}
-                onChange={(event) => {
-                  setField('baseURL', event.target.value === '' ? undefined : event.target.value)
-                }}
-              />
-            </div>
+            {family === 'qoder'
+              ? (
+                <div className={styles['field']}>
+                  <span className={styles['fieldLabel']}>{t('vpcInstance')}</span>
+                  <input
+                    className={styles['input']}
+                    type="text"
+                    value={stringAt(draft, 'vpcInstance') ?? ''}
+                    placeholder={t('vpcInstancePlaceholder')}
+                    aria-label={t('vpcInstance')}
+                    disabled={disabled}
+                    onChange={(event) => {
+                      setField('vpcInstance', event.target.value === '' ? undefined : event.target.value)
+                    }}
+                  />
+                  <p className={styles['advancedHint']}>{t('vpcInstanceHint')}</p>
+                </div>
+              )
+              : (
+                <div className={styles['field']}>
+                  <span className={styles['fieldLabel']}>{t('baseUrl')}</span>
+                  <input
+                    className={styles['input']}
+                    type="text"
+                    value={stringAt(draft, 'baseURL') ?? ''}
+                    placeholder={family === 'deepseek'
+                      ? DEEPSEEK_PUBLIC_BASE_URL
+                      : stringAt(fallback, 'baseURL') ?? t('baseUrlDefault')}
+                    aria-label={t('baseUrl')}
+                    disabled={disabled}
+                    onChange={(event) => {
+                      setField('baseURL', event.target.value === '' ? undefined : event.target.value)
+                    }}
+                  />
+                </div>
+              )}
             {/* The protocol sits beside the endpoint it describes, as it does
                 on the create card. */}
             {ownsIdentity
@@ -451,22 +482,22 @@ export function ProviderEditor(props: ProviderEditorProps): ReactNode {
             {/* Both families edit the same rows through the same contract; only
                 the extras differ — DeepSeek's inherited capacities, pi-ai's
                 endpoint interrogation. */}
-            {family === 'deepseek'
+            {family === 'pi-ai'
               ? (
+                <ModelListEditor
+                  {...catalogProps}
+                  probe={probe}
+                  probeBlocked={keyFailure}
+                  operations={operations}
+                />
+              )
+              : (
                 <DeepSeekModelsEditor
                   {...catalogProps}
                   defaultContextWindow={typeof defaultContextWindow === 'number'
                     ? defaultContextWindow
                     : undefined}
                   defaultMaxTokens={typeof defaultMaxTokens === 'number' ? defaultMaxTokens : undefined}
-                />
-              )
-              : (
-                <ModelListEditor
-                  {...catalogProps}
-                  probe={probe}
-                  probeBlocked={keyFailure}
-                  operations={operations}
                 />
               )}
           </div>
@@ -488,7 +519,32 @@ export function ProviderEditor(props: ProviderEditorProps): ReactNode {
           </div>
         )}
       {layout === 'unknown'
-        ? <p className={styles['advancedHint']}>{`${t('advancedHint')} (${namespace.ns})`}</p>
+        ? (
+          <>
+            <div className={styles['field']}>
+              <span className={styles['fieldLabel']}>{t('keyInput')}</span>
+              <input
+                className={styles['input']}
+                type="password"
+                autoComplete="off"
+                value={keyDraft}
+                placeholder={keyLocked
+                  ? t('keyEnvLocked')
+                  : keyState?.configured === true && props.credentialRequired !== true
+                    ? t('keyStored')
+                    : t('keyPlaceholder')}
+                aria-label={t('keyInput')}
+                aria-invalid={shownKeyFailure !== undefined}
+                required={props.credentialRequired === true}
+                autoFocus={props.autoFocusCredential === true}
+                disabled={disabled || keyLocked}
+                onChange={(event) => { setKeyDraft(event.target.value) }}
+              />
+              {shownKeyFailure === undefined ? null : <p className={styles['error']}>{t(shownKeyFailure)}</p>}
+            </div>
+            <p className={styles['advancedHint']}>{`${t('advancedHint')} (${namespace.ns})`}</p>
+          </>
+        )
         : curatedFields(layout)}
       {failure !== undefined ? <p className={styles['error']}>{failure}</p> : null}
       {props.credentialOnly === true || modelFailure === undefined
@@ -501,7 +557,8 @@ export function ProviderEditor(props: ProviderEditorProps): ReactNode {
       <EditorFooter
         t={t}
         busy={busy}
-        submitDisabled={disabled || layout === 'unknown'
+        submitDisabled={disabled
+          || (layout === 'unknown' && keyValue.length === 0 && keyState?.configured !== true)
           || (props.credentialOnly !== true && modelFailure !== undefined)
           || shownKeyFailure !== undefined
           || (props.credentialRequired === true && keyValue.length === 0)}
