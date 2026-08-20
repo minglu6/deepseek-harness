@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-08-20-unknown-adapter-models-key.md
-2026-08-20-unknown-adapter-models-key.md: be3aacd4e7284e89fe855fe414338db44dd17720
-2026-08-20-unknown-adapter-models-key.zh.md: aaa5357bc546e5aa639a3505e8d7b15d620b7347
+2026-08-20-unknown-adapter-models-key.md: f3d9391bb22e8c570f00daa7b9afabbb4cf3d745
+2026-08-20-unknown-adapter-models-key.zh.md: 312ec9123a50fcf0686932d49d39b3d267aeca49

@@ -144,14 +144,14 @@ function refFor(
   path: readonly string[],
   provider: string,
 ): string {
+  // qoder-cn always uses the derived route ref so a launch-environment Qoder
+  // token cannot lock or shadow the value typed on this page.
+  if (namespace.ns === 'llm-qoder' || provider === 'qoder-cn') return deriveKeyRef(provider)
   const profile = schema.getPath(namespace.value, path)
   const named = typeof profile === 'object' && profile !== null
     ? (profile as { apiKeyEnv?: unknown }).apiKeyEnv
     : undefined
-  if (typeof named === 'string' && named.length > 0) return named
-  // Adapter default, not deriveKeyRef('qoder-cn') (`QODER_CN_API_KEY`).
-  if (namespace.ns === 'llm-qoder' || provider === 'qoder-cn') return 'QODERCN_PERSONAL_ACCESS_TOKEN'
-  return deriveKeyRef(provider)
+  return typeof named === 'string' && named.length > 0 ? named : deriveKeyRef(provider)
 }
 
 /**
@@ -253,9 +253,12 @@ export function ProviderEditor(props: ProviderEditorProps): ReactNode {
     // A profile names the conventional reference only when this page is about
     // to store a key and the schema has `apiKeyEnv`. Otherwise a pi-ai route
     // keeps its native auth path, and an unknown family stores only the key.
+    // qoder overwrites a launch-environment token name so the stored PAT is
+    // the derived route ref this card just wrote.
     const canStoreApiKeyEnv = schema.nodeAtPath(root, [...settingsPath, 'apiKeyEnv']) !== undefined
-    const next = canStoreApiKeyEnv && stringAt(draft, 'apiKeyEnv') === undefined
-      && stringAt(fallback, 'apiKeyEnv') === undefined && keyValue.length > 0
+    const currentEnv = stringAt(draft, 'apiKeyEnv') ?? stringAt(fallback, 'apiKeyEnv')
+    const next = canStoreApiKeyEnv && keyValue.length > 0
+      && (currentEnv === undefined || (layout === 'qoder' && currentEnv !== keyRef))
       ? schema.setPath(draft, ['apiKeyEnv'], keyRef)
       : draft
     if (props.credentialOnly !== true) {
@@ -558,7 +561,8 @@ export function ProviderEditor(props: ProviderEditorProps): ReactNode {
         t={t}
         busy={busy}
         submitDisabled={disabled
-          || (layout === 'unknown' && keyValue.length === 0 && keyState?.configured !== true)
+          || ((layout === 'unknown' || layout === 'qoder')
+            && keyValue.length === 0 && keyState?.configured !== true)
           || (props.credentialOnly !== true && modelFailure !== undefined)
           || shownKeyFailure !== undefined
           || (props.credentialRequired === true && keyValue.length === 0)}

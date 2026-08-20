@@ -12,7 +12,7 @@ Status: implemented
 
 未知 settings namespace 仍渲染共用的 **API 密钥** 字段。Apply 通过 `credentials.set` 按 profile 引用（profile 没有引用时则为 `<ROUTE>_API_KEY`）写入所填密钥；schema 没有 `apiKeyEnv` 可记录时，物化一个空 profile。其余连接事实仍留在 `settings.yaml`。添加提供方列表按 provider id 排序，避免单独注册的插件被钉在顶部。
 
-`llm-qoder` 是第三套精选家族：PAT、可选 VPC 实例，以及与 DeepSeek 相同的模型目录编辑器。不展示网关或 OpenAPI 地址。其他未知适配器仍只有密钥字段。
+`llm-qoder` 是第三套精选家族：PAT、可选 VPC 实例，以及与 DeepSeek 相同的模型目录编辑器。不展示网关或 OpenAPI 地址。PAT 写入派生的路由引用（`qoder-cn` 为 `QODER_CN_API_KEY`），而不是启动环境里的 Qoder 令牌，因此模型页上的输入框保持可写。其他未知适配器仍只有密钥字段。
 
 ## 考虑过的方案
 
@@ -24,10 +24,12 @@ Status: implemented
 
 **已配置行也排序。** 推迟：已安装行保持目录顺序；只有添加列表会把新插件顶到最前。
 
+**把 `qoder-cn` 绑到 `QODERCN_PERSONAL_ACCESS_TOKEN`。** 否决：启动环境里的 Qoder 令牌会锁住模型页输入框，并盖掉页面上填的 PAT。
+
 ## 后果
 
-凡声明了 settings path 的适配器都可以在模型页填密钥。额外字段（VPC、自定义端点）仍走 yaml。没有 `apiKeyEnv` 的 schema 仍会物化用户 profile，使该行变为已配置且可删除。
+凡声明了 settings path 的适配器都可以在模型页填密钥。额外字段（VPC、自定义端点）仍走 yaml。没有 `apiKeyEnv` 的 schema 仍会物化用户 profile，使该行变为已配置且可删除。qoder 的 PAT 是页面写入的 `QODER_CN_API_KEY`；启动环境里的 Qoder 令牌不是模型页凭据。
 
 ## 测试
 
-`packages/client/ui-settings-models/tests/components.client.spec.tsx` 覆盖添加列表顺序、未知家族的密钥字段，以及写入 `PLAIN_API_KEY` 并物化 profile。
+`packages/client/ui-settings-models/tests/components.client.spec.tsx` 覆盖添加列表顺序、未知家族的密钥字段、写入 `PLAIN_API_KEY` 并物化 profile，以及启动环境中的 Qoder 令牌仍让 `qoder-cn` 在 `QODER_CN_API_KEY` 下保持可写。
