@@ -472,21 +472,79 @@ describe('ModelsSection', () => {
       readOnly={false}
       onClose={vi.fn()}
     />)
-    expect(screen.getByLabelText(en.keyInput)).toBeTruthy()
+    const key = screen.getByLabelText<HTMLInputElement>(en.keyInput)
+    expect(key.placeholder).toBe(en.keyPlaceholder)
+    expect(key.disabled).toBe(false)
     expect(screen.queryByLabelText(en.baseUrl)).toBeNull()
+    expect(screen.getByText<HTMLButtonElement>(en.apply).disabled).toBe(true)
     fireEvent.click(screen.getByText(en.customized))
     expect(screen.getByLabelText(en.vpcInstance)).toBeTruthy()
     expect(screen.getByText(en.vpcInstanceHint)).toBeTruthy()
     fireEvent.change(screen.getByLabelText(en.vpcInstance), { target: { value: 'acme.vpc.qoder.com.cn' } })
-    fireEvent.change(screen.getByLabelText(en.keyInput), { target: { value: 'pt-test' } })
+    fireEvent.change(key, { target: { value: 'pt-test' } })
     fireEvent.click(screen.getByText(en.apply))
     await waitFor(() => {
-      expect(set).toHaveBeenCalledWith({ ref: 'QODERCN_PERSONAL_ACCESS_TOKEN', value: 'pt-test' })
+      expect(set).toHaveBeenCalledWith({ ref: 'QODER_CN_API_KEY', value: 'pt-test' })
     })
     expect(mutate).toHaveBeenCalledWith(expect.objectContaining({
       ns: 'llm-qoder',
       ops: expect.arrayContaining([
         { op: 'set', path: ['providers', 'qoder-cn', 'vpcInstance'], value: 'acme.vpc.qoder.com.cn' },
+        { op: 'set', path: ['providers', 'qoder-cn', 'apiKeyEnv'], value: 'QODER_CN_API_KEY' },
+      ]),
+    }))
+  })
+
+  it('keeps the qoder-cn key writable when a launch-environment Qoder token is present', async () => {
+    const namespace: SettingsNamespaceView = {
+      ns: 'llm-qoder',
+      schema: JSON.parse(JSON.stringify(QoderConfig.toJSON())) as unknown,
+      value: {
+        apiKeyEnv: 'QODERCN_PERSONAL_ACCESS_TOKEN',
+        providers: { 'qoder-cn': { apiKeyEnv: 'QODERCN_PERSONAL_ACCESS_TOKEN' } },
+        models: [{ id: 'auto', name: 'Auto', contextWindow: 180_000 }],
+      },
+      base: { models: [{ id: 'auto', name: 'Auto', contextWindow: 180_000 }] },
+      user: {},
+      applies: 'live',
+      secrets: [],
+      revision: 0,
+    }
+    const mutate = vi.fn(() => Promise.resolve(ok({ ...namespace, revision: 1 })))
+    const set = vi.fn(() => Promise.resolve(ok({})))
+    const { face } = scriptedFace({ mutate, set })
+    face.credentials.describe.mockImplementation((payload: { refs: string[] }) => Promise.resolve(ok({
+      credentials: Object.fromEntries(payload.refs.map(ref => [ref, {
+        configured: ref === 'QODERCN_PERSONAL_ACCESS_TOKEN',
+        ...ref === 'QODERCN_PERSONAL_ACCESS_TOKEN' ? { source: 'env' as const } : {},
+        writable: ref !== 'QODERCN_PERSONAL_ACCESS_TOKEN',
+      }])),
+    })))
+    const { ProviderEditor } = await import('../src/client/ProviderEditor.tsx')
+    render(<ProviderEditor
+      provider="qoder-cn"
+      displayName="qoder-cn"
+      namespace={namespace}
+      schema={settingsSchema}
+      settingsPath={['providers', 'qoder-cn']}
+      api={face as never}
+      t={t}
+      readOnly={false}
+      onClose={vi.fn()}
+    />)
+    const key = await screen.findByLabelText<HTMLInputElement>(en.keyInput)
+    await waitFor(() => { expect(key.placeholder).toBe(en.keyPlaceholder) })
+    expect(key.disabled).toBe(false)
+    fireEvent.change(key, { target: { value: 'pt-page' } })
+    fireEvent.click(screen.getByText(en.apply))
+    await waitFor(() => {
+      expect(set).toHaveBeenCalledWith({ ref: 'QODER_CN_API_KEY', value: 'pt-page' })
+    })
+    expect(face.credentials.describe).toHaveBeenCalledWith({ refs: ['QODER_CN_API_KEY'] })
+    expect(mutate).toHaveBeenCalledWith(expect.objectContaining({
+      ns: 'llm-qoder',
+      ops: expect.arrayContaining([
+        { op: 'set', path: ['providers', 'qoder-cn', 'apiKeyEnv'], value: 'QODER_CN_API_KEY' },
       ]),
     }))
   })
