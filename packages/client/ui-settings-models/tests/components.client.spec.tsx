@@ -578,7 +578,7 @@ describe('ModelsSection', () => {
   it('edits qoder-cn with a PAT, optional VPC, and the model catalog, without a gateway URL', async () => {
     const namespace: SettingsNamespaceView = {
       ns: 'llm-qoder',
-      schema: JSON.parse(JSON.stringify(QoderConfig.toJSON())) as unknown,
+      schema: JSON.parse(JSON.stringify(QoderConfig.toJSON())) as JsonValue,
       value: {
         apiKeyEnv: 'QODERCN_PERSONAL_ACCESS_TOKEN',
         models: [{ id: 'auto', name: 'Auto', contextWindow: 180_000 }],
@@ -589,8 +589,8 @@ describe('ModelsSection', () => {
       secrets: [],
       revision: 0,
     }
-    const mutate = vi.fn(() => Promise.resolve(ok({ ...namespace, revision: 1 })))
-    const set = vi.fn(() => Promise.resolve(ok({})))
+    const mutate = vi.fn(() => Promise.resolve(remoteOk({ ...namespace, revision: 1 })))
+    const set = vi.fn(() => Promise.resolve(remoteOk(undefined)))
     const { face } = scriptedFace({ mutate, set })
     const { ProviderEditor } = await import('../src/client/ProviderEditor.tsx')
     render(<ProviderEditor
@@ -599,7 +599,7 @@ describe('ModelsSection', () => {
       namespace={namespace}
       schema={settingsSchema}
       settingsPath={['providers', 'qoder-cn']}
-      api={face as never}
+      operations={operationsWith(face)}
       t={t}
       readOnly={false}
       onClose={vi.fn()}
@@ -616,21 +616,22 @@ describe('ModelsSection', () => {
     fireEvent.change(key, { target: { value: 'pt-test' } })
     fireEvent.click(screen.getByText(en.apply))
     await waitFor(() => {
-      expect(set).toHaveBeenCalledWith({ ref: 'QODER_CN_API_KEY', value: 'pt-test' })
+      expect(set).toHaveBeenCalledWith('QODER_CN_API_KEY', 'pt-test')
     })
-    expect(mutate).toHaveBeenCalledWith(expect.objectContaining({
-      ns: 'llm-qoder',
-      ops: expect.arrayContaining([
+    expect(mutate).toHaveBeenCalledWith(
+      'llm-qoder',
+      expect.arrayContaining([
         { op: 'set', path: ['providers', 'qoder-cn', 'vpcInstance'], value: 'acme.vpc.qoder.com.cn' },
         { op: 'set', path: ['providers', 'qoder-cn', 'apiKeyEnv'], value: 'QODER_CN_API_KEY' },
       ]),
-    }))
+      0,
+    )
   })
 
   it('keeps the qoder-cn key writable when a launch-environment Qoder token is present', async () => {
     const namespace: SettingsNamespaceView = {
       ns: 'llm-qoder',
-      schema: JSON.parse(JSON.stringify(QoderConfig.toJSON())) as unknown,
+      schema: JSON.parse(JSON.stringify(QoderConfig.toJSON())) as JsonValue,
       value: {
         apiKeyEnv: 'QODERCN_PERSONAL_ACCESS_TOKEN',
         providers: { 'qoder-cn': { apiKeyEnv: 'QODERCN_PERSONAL_ACCESS_TOKEN' } },
@@ -642,16 +643,16 @@ describe('ModelsSection', () => {
       secrets: [],
       revision: 0,
     }
-    const mutate = vi.fn(() => Promise.resolve(ok({ ...namespace, revision: 1 })))
-    const set = vi.fn(() => Promise.resolve(ok({})))
+    const mutate = vi.fn(() => Promise.resolve(remoteOk({ ...namespace, revision: 1 })))
+    const set = vi.fn(() => Promise.resolve(remoteOk(undefined)))
     const { face } = scriptedFace({ mutate, set })
-    face.credentials.describe.mockImplementation((payload: { refs: string[] }) => Promise.resolve(ok({
-      credentials: Object.fromEntries(payload.refs.map(ref => [ref, {
+    face.credentials.describe.mockImplementation((refs: string[]) => Promise.resolve(remoteOk(
+      Object.fromEntries(refs.map(ref => [ref, {
         configured: ref === 'QODERCN_PERSONAL_ACCESS_TOKEN',
         ...ref === 'QODERCN_PERSONAL_ACCESS_TOKEN' ? { source: 'env' as const } : {},
         writable: ref !== 'QODERCN_PERSONAL_ACCESS_TOKEN',
       }])),
-    })))
+    )))
     const { ProviderEditor } = await import('../src/client/ProviderEditor.tsx')
     render(<ProviderEditor
       provider="qoder-cn"
@@ -659,7 +660,7 @@ describe('ModelsSection', () => {
       namespace={namespace}
       schema={settingsSchema}
       settingsPath={['providers', 'qoder-cn']}
-      api={face as never}
+      operations={operationsWith(face)}
       t={t}
       readOnly={false}
       onClose={vi.fn()}
@@ -670,15 +671,16 @@ describe('ModelsSection', () => {
     fireEvent.change(key, { target: { value: 'pt-page' } })
     fireEvent.click(screen.getByText(en.apply))
     await waitFor(() => {
-      expect(set).toHaveBeenCalledWith({ ref: 'QODER_CN_API_KEY', value: 'pt-page' })
+      expect(set).toHaveBeenCalledWith('QODER_CN_API_KEY', 'pt-page')
     })
-    expect(face.credentials.describe).toHaveBeenCalledWith({ refs: ['QODER_CN_API_KEY'] })
-    expect(mutate).toHaveBeenCalledWith(expect.objectContaining({
-      ns: 'llm-qoder',
-      ops: expect.arrayContaining([
+    expect(face.credentials.describe).toHaveBeenCalledWith(['QODER_CN_API_KEY'])
+    expect(mutate).toHaveBeenCalledWith(
+      'llm-qoder',
+      expect.arrayContaining([
         { op: 'set', path: ['providers', 'qoder-cn', 'apiKeyEnv'], value: 'QODER_CN_API_KEY' },
       ]),
-    }))
+      0,
+    )
   })
 
   it('applies customized deepseek fields as path ops', async () => {
@@ -1270,25 +1272,30 @@ describe('ModelsSection', () => {
   })
 
   it('stores an API key for an unknown adapter family and materializes its profile', async () => {
-    const after = {
-      ...wireNamespaces()[1]!,
-      user: { profiles: { plain: {} } },
+    const after: SettingsNamespaceView = {
+      ns: 'llm-plain',
+      schema: { type: 'object' },
       value: { profiles: { plain: {} } },
+      base: {},
+      user: { profiles: { plain: {} } },
+      applies: 'live',
+      secrets: [],
       revision: 1,
     }
-    const mutate = vi.fn(() => Promise.resolve(ok(after)))
-    const set = vi.fn(() => Promise.resolve(ok({})))
+    const mutate = vi.fn(() => Promise.resolve(remoteOk(after)))
+    const set = vi.fn(() => Promise.resolve(remoteOk(undefined)))
     await mountSection({ mutate, set })
     fireEvent.click(screen.getByText(en.add))
     const pick = await screen.findByLabelText<HTMLSelectElement>(en.provider)
     fireEvent.change(pick, { target: { value: 'plain' } })
     fireEvent.change(await screen.findByLabelText<HTMLInputElement>(en.keyInput), { target: { value: 'pt-plain' } })
     fireEvent.click(screen.getByText(en.apply))
-    await waitFor(() => { expect(set).toHaveBeenCalledWith({ ref: 'PLAIN_API_KEY', value: 'pt-plain' }) })
-    expect(mutate).toHaveBeenCalledWith(expect.objectContaining({
-      ns: 'llm-plain',
-      ops: [{ op: 'set', path: ['profiles', 'plain'], value: {} }],
-    }))
+    await waitFor(() => { expect(set).toHaveBeenCalledWith('PLAIN_API_KEY', 'pt-plain') })
+    expect(mutate).toHaveBeenCalledWith(
+      'llm-plain',
+      [{ op: 'set', path: ['profiles', 'plain'], value: {} }],
+      0,
+    )
   })
 
   it('surfaces a rejected settings write and never stores the key after it', async () => {
