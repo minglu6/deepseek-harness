@@ -10,7 +10,7 @@ The Models editor keyed curated cards on `llm-deepseek` and `llm-pi-ai` by name.
 
 ## Decision
 
-An unknown settings namespace still renders the shared **API key** field. Apply stores the typed key through `credentials.set` under the profile's reference (or `<ROUTE>_API_KEY` when the profile has none) and materializes an empty profile when the schema has no `apiKeyEnv` to record. Remaining connection facts stay in `settings.yaml`. The Add-provider list is sorted by provider id so a separately registered plugin is not pinned at the top.
+An unknown settings namespace still renders the shared **API key** field. Apply stores the typed key through `credentials.set` under the profile's reference (or `<ROUTE>_API_KEY` when the profile has none) and materializes an empty profile when the schema has no `apiKeyEnv` to record. Remaining connection facts stay in `cordis.patch.yml`. The Add-provider list is sorted by provider id so a separately registered plugin is not pinned at the top.
 
 `llm-qoder` is a third curated family: PAT, optional VPC instance, and the same model catalog editor as DeepSeek. It does not show gateway or OpenAPI URLs. The PAT stores under the derived route reference (`QODER_CN_API_KEY` for `qoder-cn`), not a launch-environment Qoder token, so the Models field stays writable. Other unknown adapters stay key-only.
 

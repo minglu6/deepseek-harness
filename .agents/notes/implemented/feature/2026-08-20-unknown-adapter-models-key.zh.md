@@ -10,7 +10,7 @@ Status: implemented
 
 ## 决策
 
-未知 settings namespace 仍渲染共用的 **API 密钥** 字段。Apply 通过 `credentials.set` 按 profile 引用（profile 没有引用时则为 `<ROUTE>_API_KEY`）写入所填密钥；schema 没有 `apiKeyEnv` 可记录时，物化一个空 profile。其余连接事实仍留在 `settings.yaml`。添加提供方列表按 provider id 排序，避免单独注册的插件被钉在顶部。
+未知 settings namespace 仍渲染共用的 **API 密钥** 字段。Apply 通过 `credentials.set` 按 profile 引用（profile 没有引用时则为 `<ROUTE>_API_KEY`）写入所填密钥；schema 没有 `apiKeyEnv` 可记录时，物化一个空 profile。其余连接事实仍留在 `cordis.patch.yml`。添加提供方列表按 provider id 排序，避免单独注册的插件被钉在顶部。
 
 `llm-qoder` 是第三套精选家族：PAT、可选 VPC 实例，以及与 DeepSeek 相同的模型目录编辑器。不展示网关或 OpenAPI 地址。PAT 写入派生的路由引用（`qoder-cn` 为 `QODER_CN_API_KEY`），而不是启动环境里的 Qoder 令牌，因此模型页上的输入框保持可写。其他未知适配器仍只有密钥字段。
 

@@ -1,6 +1,22 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-08-20-unknown-adapter-models-key.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-08-20-unknown-adapter-models-key.md
-2026-08-20-unknown-adapter-models-key.md: f3d9391bb22e8c570f00daa7b9afabbb4cf3d745
-2026-08-20-unknown-adapter-models-key.zh.md: 312ec9123a50fcf0686932d49d39b3d267aeca49
+/agent-note-unknown-adapter-families-get-an-api-key-on-the-models-page:
+  en: eed50861da207997
+  zh: cd6dc99801deac3a
+/agent-note-unknown-adapter-families-get-an-api-key-on-the-models-page/problem:
+  en: 37f109d73ea6a081
+  zh: f13b81ad27b23d83
+/agent-note-unknown-adapter-families-get-an-api-key-on-the-models-page/decision:
+  en: e8aa2d9a1f9f9b7e
+  zh: 326f7b5af57f0f73
+/agent-note-unknown-adapter-families-get-an-api-key-on-the-models-page/alternatives-considered:
+  en: 6e6ef1d49f4dee6b
+  zh: f1f0985c9882222f
+/agent-note-unknown-adapter-families-get-an-api-key-on-the-models-page/consequences:
+  en: 307d475b31beee56
+  zh: 2821fc04de8604cb
+/agent-note-unknown-adapter-families-get-an-api-key-on-the-models-page/testing:
+  en: c06b8ad601394f77
+  zh: 3ebd7f2a72e463f9
