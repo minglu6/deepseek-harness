@@ -62,7 +62,7 @@ export interface SessionStatus {
   readonly running: boolean | undefined
   /** Highest-precedence domain request currently awaiting user interaction. */
   readonly pendingInteraction: SessionPendingInteraction | undefined
-  /** Whether an observed stop outside the main view still needs acknowledgement. */
+  /** Whether the local or installed shared completion source still requires acknowledgement. */
   readonly completionUnread: boolean
 }
 
@@ -290,6 +290,7 @@ export class UiSession extends Service {
   private pendingSnapshot: ReadonlyMap<SessionId, SessionPendingInteractionBase> = new Map()
   private readonly running = new Map<SessionId, boolean>()
   private readonly completionUnread = new Set<SessionId>()
+  private completionSource: HostObservable<ReadonlySet<SessionId>> | undefined
   private statusSnapshot: SessionStatusSnapshot = new Map()
   private readonly statusListeners = new Set<() => void>()
   private mainRetainId: SessionId | undefined
@@ -385,6 +386,33 @@ export class UiSession extends Service {
         this.rebuildBindings()
       }
     }, 'uiSession.provide()')
+    return () => { void dispose() }
+  }
+
+  /**
+   * Replace local completion reminders with one shared observable until disposal.
+   * Running and pending-interaction status remain locally projected. The caller owns
+   * acknowledgement and connection ordering; main-view retention does not mutate this source.
+   * @param source - stable observable containing the authoritative unread Session identities.
+   * @returns idempotent disposer that resumes local tracking from the last shared snapshot.
+   * @throws when another shared completion source is already installed.
+   */
+  setCompletionUnreadSource(source: HostObservable<ReadonlySet<SessionId>>): () => void {
+    if (this.completionSource !== undefined) {
+      throw new Error('ui-session: a shared completion source is already installed')
+    }
+    const dispose = this.ctx.effect(() => {
+      this.completionSource = source
+      this.completionUnread.clear()
+      const unsubscribe = source.subscribe(() => { this.publishStatus() })
+      this.publishStatus()
+      return () => {
+        unsubscribe()
+        for (const id of source.getSnapshot()) this.completionUnread.add(id)
+        this.completionSource = undefined
+        this.reconcileStatus()
+      }
+    }, 'uiSession.setCompletionUnreadSource()')
     return () => { void dispose() }
   }
 
@@ -491,9 +519,11 @@ export class UiSession extends Service {
     const previous = this.running.get(sessionId)
     const beforeBaseline = this.sessions.list.getSnapshot().phase === 'pending'
     this.running.set(sessionId, running)
-    if (running) this.completionUnread.delete(sessionId)
-    else if ((previous === true || (previous === undefined && beforeBaseline))
-      && !this.isMain(sessionId)) this.completionUnread.add(sessionId)
+    if (this.completionSource === undefined) {
+      if (running) this.completionUnread.delete(sessionId)
+      else if ((previous === true || (previous === undefined && beforeBaseline))
+        && !this.isMain(sessionId)) this.completionUnread.add(sessionId)
+    }
     this.publishStatus()
   }
 
@@ -508,7 +538,7 @@ export class UiSession extends Service {
       else if (previous !== row.running) this.observeRunning(id, row.running)
     }
     for (const id of present) {
-      if (this.isMain(id)) this.completionUnread.delete(id)
+      if (this.completionSource === undefined && this.isMain(id)) this.completionUnread.delete(id)
     }
     if (list.phase === 'ready') {
       for (const id of this.running.keys()) {
@@ -525,18 +555,19 @@ export class UiSession extends Service {
   }
 
   private publishStatus(): void {
+    const completionUnread = this.completionSource?.getSnapshot() ?? this.completionUnread
     const ids = new Set<SessionId>([
       ...(Object.keys(this.sessions.list.getSnapshot().byId) as SessionId[]),
       ...this.running.keys(),
       ...this.pendingSnapshot.keys(),
-      ...this.completionUnread,
+      ...completionUnread,
     ])
     const next = new Map<SessionId, SessionStatus>()
     for (const id of ids) {
       next.set(id, {
         running: this.running.get(id),
         pendingInteraction: this.pendingSnapshot.get(id),
-        completionUnread: this.completionUnread.has(id),
+        completionUnread: completionUnread.has(id),
       })
     }
     if (sameSessionStatus(this.statusSnapshot, next)) return

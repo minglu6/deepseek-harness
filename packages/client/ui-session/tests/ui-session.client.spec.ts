@@ -521,6 +521,76 @@ describe('UiSession bindings', () => {
 })
 
 describe('UiSession status', () => {
+  it('uses shared reminders without local acknowledgements or running-event mutations', () => {
+    const ctx = new Context()
+    const bench = createSessionsBench(ctx)
+    const id = sessionId('shared')
+    const remoteOnly = sessionId('remote-only')
+    bench.binding(id)
+    const service = createUiSession(ctx, bench)
+    let unread: ReadonlySet<SessionId> = new Set([id, remoteOnly])
+    const listeners = new Set<() => void>()
+    const source: HostObservable<ReadonlySet<SessionId>> = {
+      getSnapshot: () => unread,
+      subscribe: (listener) => { listeners.add(listener); return () => { listeners.delete(listener) } },
+    }
+    const uninstall = service.setCompletionUnreadSource(source)
+    const changed = vi.fn()
+    service.sessionStatus.subscribe(changed)
+    expect(service.sessionStatus.getSnapshot().get(remoteOnly)?.completionUnread).toBe(true)
+    expect(() => service.setCompletionUnreadSource(source)).toThrow('already installed')
+
+    bench.setMainView(id, 1)
+    bench.emitStatus(id, true)
+    expect(service.sessionStatus.getSnapshot().get(id)).toMatchObject({ running: true, completionUnread: true })
+    bench.emitStatus(id, false)
+    bench.list.update((draft) => { draft.byId[id]!.displayTitle = 'Updated' })
+    expect(service.sessionStatus.getSnapshot().get(id)?.completionUnread).toBe(true)
+
+    unread = new Set()
+    for (const listener of listeners) listener()
+    expect(service.sessionStatus.getSnapshot().get(id)?.completionUnread).toBe(false)
+    expect(service.sessionStatus.getSnapshot().has(remoteOnly)).toBe(false)
+    bench.setMainView(id, 0)
+    bench.emitStatus(id, true)
+    bench.emitStatus(id, false)
+    expect(service.sessionStatus.getSnapshot().get(id)?.completionUnread).toBe(false)
+    expect(changed).toHaveBeenCalled()
+
+    uninstall()
+    uninstall()
+    expect(listeners.size).toBe(0)
+    expect(service.sessionStatus.getSnapshot().get(id)?.completionUnread).toBe(false)
+    bench.emitStatus(id, true)
+    bench.emitStatus(id, false)
+    expect(service.sessionStatus.getSnapshot().get(id)?.completionUnread).toBe(true)
+  })
+
+  it('keeps pending interactions independent and resumes from the final shared reminders', () => {
+    const ctx = new Context()
+    const bench = createSessionsBench(ctx)
+    const id = sessionId('shared-pending')
+    bench.binding(id)
+    const service = createUiSession(ctx, bench)
+    const publish = service.registerPendingInteraction<SessionPendingInteractionBase>(() => 1)
+    const interaction = { key: 'approval', kind: 'approval', sessionId: id }
+    const remove = publish(interaction, async () => {})
+    const unread: ReadonlySet<SessionId> = new Set([id])
+    const uninstall = service.setCompletionUnreadSource({
+      getSnapshot: () => unread,
+      subscribe: () => () => {},
+    })
+    expect(service.sessionStatus.getSnapshot().get(id)).toEqual({
+      running: false, completionUnread: true, pendingInteraction: interaction,
+    })
+    uninstall()
+    expect(service.sessionStatus.getSnapshot().get(id)?.completionUnread).toBe(true)
+    remove()
+    expect(service.sessionStatus.getSnapshot().get(id)?.pendingInteraction).toBeUndefined()
+    bench.setMainView(id, 1)
+    expect(service.sessionStatus.getSnapshot().get(id)?.completionUnread).toBe(false)
+  })
+
   it('keeps synthetic-row status unknown until an event or Host baseline establishes it', () => {
     const ctx = new Context()
     const bench = createSessionsBench(ctx)
